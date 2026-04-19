@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DeFi Dashboard</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', sans-serif; background: #0a0a0f; color: #fff; min-height: 100vh; padding: 2rem; }
+    h1 { font-size: 2rem; color: #00e5ff; margin-bottom: 0.25rem; }
+    .subtitle { color: #666; margin-bottom: 2rem; font-size: 0.9rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+    .card { background: #12121e; border: 1px solid #1e1e3a; border-radius: 12px; padding: 1.5rem; transition: border-color 0.2s; }
+    .card:hover { border-color: #00e5ff; }
+    .card .name { font-size: 0.85rem; color: #888; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; }
+    .card .symbol { background: #1e1e3a; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; color: #00e5ff; }
+    .card .price { font-size: 1.5rem; font-weight: bold; margin-bottom: 0.25rem; }
+    .card .change { font-size: 0.85rem; }
+    .positive { color: #00e676; }
+    .negative { color: #ff5252; }
+    .market-cap { font-size: 0.75rem; color: #555; margin-top: 0.5rem; }
+    .section-title { font-size: 1.1rem; color: #00e5ff; margin-bottom: 1rem; margin-top: 2rem; }
+    .portfolio { background: #12121e; border: 1px solid #1e1e3a; border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; }
+    .portfolio-row { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid #1e1e3a; }
+    .portfolio-row:last-child { border-bottom: none; }
+    .portfolio-total { font-size: 1.5rem; font-weight: bold; color: #00e676; margin-top: 1rem; }
+    .loading { color: #555; font-style: italic; }
+    .error { color: #ff5252; font-size: 0.85rem; }
+    .last-updated { color: #444; font-size: 0.75rem; margin-top: 2rem; text-align: right; }
+    .refresh-btn { background: #1e1e3a; border: 1px solid #00e5ff; color: #00e5ff; padding: 0.5rem 1.5rem; border-radius: 8px; cursor: pointer; font-size: 0.9rem; margin-bottom: 2rem; transition: all 0.2s; }
+    .refresh-btn:hover { background: #00e5ff; color: #0a0a0f; }
+    .trending { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 2rem; }
+    .trend-chip { background: #12121e; border: 1px solid #1e1e3a; border-radius: 20px; padding: 0.4rem 1rem; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+
+<h1>⚡ DeFi Dashboard</h1>
+<p class="subtitle">Live crypto prices powered by CoinGecko API</p>
+
+<button class="refresh-btn" onclick="loadAll()">↻ Refresh Prices</button>
+
+<div class="section-title">📈 Top Cryptocurrencies</div>
+<div class="grid" id="cryptoGrid"><p class="loading">Loading prices...</p></div>
+
+<div class="section-title">💼 Sample Portfolio</div>
+<div class="portfolio" id="portfolio">
+  <p class="loading">Calculating portfolio...</p>
+</div>
+
+<div class="section-title">🔥 Trending</div>
+<div class="trending" id="trending"><p class="loading">Loading trending...</p></div>
+
+<p class="last-updated" id="lastUpdated"></p>
+
+<script>
+const COINS = ['bitcoin','ethereum','solana','binancecoin','cardano','avalanche-2','chainlink','polkadot'];
+
+const PORTFOLIO = [
+  { id: 'bitcoin', amount: 0.05 },
+  { id: 'ethereum', amount: 1.2 },
+  { id: 'solana', amount: 10 },
+  { id: 'chainlink', amount: 50 }
+];
+
+async function fetchPrices() {
+  const ids = COINS.join(',');
+  const res = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}&order=market_cap_desc&sparkline=false`);
+  return await res.json();
+}
+
+async function fetchTrending() {
+  const res = await fetch('https://api.coingecko.com/api/v3/search/trending');
+  return await res.json();
+}
+
+function formatPrice(price) {
+  if (price >= 1000) return '$' + price.toLocaleString('en-US', {maximumFractionDigits: 2});
+  if (price >= 1) return '$' + price.toFixed(2);
+  return '$' + price.toFixed(6);
+}
+
+function formatMarketCap(mc) {
+  if (mc >= 1e9) return '$' + (mc/1e9).toFixed(2) + 'B';
+  if (mc >= 1e6) return '$' + (mc/1e6).toFixed(2) + 'M';
+  return '$' + mc.toLocaleString();
+}
+
+async function loadAll() {
+  try {
+    const [prices, trending] = await Promise.all([fetchPrices(), fetchTrending()]);
+    renderGrid(prices);
+    renderPortfolio(prices);
+    renderTrending(trending);
+    document.getElementById('lastUpdated').textContent = 'Last updated: ' + new Date().toLocaleTimeString();
+  } catch(e) {
+    document.getElementById('cryptoGrid').innerHTML = '<p class="error">Failed to load. CoinGecko rate limit hit — try again in 60 seconds.</p>';
+  }
+}
+
+function renderGrid(coins) {
+  const grid = document.getElementById('cryptoGrid');
+  grid.innerHTML = coins.map(coin => {
+    const change = coin.price_change_percentage_24h;
+    const cls = change >= 0 ? 'positive' : 'negative';
+    const arrow = change >= 0 ? '▲' : '▼';
+    return `<div class="card">
+      <div class="name">
+        <img src="${coin.image}" width="20" height="20" style="border-radius:50%">
+        ${coin.name} <span class="symbol">${coin.symbol.toUpperCase()}</span>
+      </div>
+      <div class="price">${formatPrice(coin.current_price)}</div>
+      <div class="change ${cls}">${arrow} ${Math.abs(change).toFixed(2)}% (24h)</div>
+      <div class="market-cap">MCap: ${formatMarketCap(coin.market_cap)}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderPortfolio(coins) {
+  const priceMap = {};
+  coins.forEach(c => priceMap[c.id] = c.current_price);
+  let total = 0;
+  const rows = PORTFOLIO.map(item => {
+    const price = priceMap[item.id] || 0;
+    const value = price * item.amount;
+    total += value;
+    const name = coins.find(c => c.id === item.id)?.name || item.id;
+    return `<div class="portfolio-row">
+      <span>${name}</span>
+      <span style="color:#888">${item.amount} coins</span>
+      <span>$${value.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+    </div>`;
+  }).join('');
+  document.getElementById('portfolio').innerHTML = rows + `<div class="portfolio-total">Total: $${total.toLocaleString('en-US', {maximumFractionDigits: 2})}</div>`;
+}
+
+function renderTrending(data) {
+  const chips = data.coins.slice(0,7).map(item =>
+    `<div class="trend-chip">🔥 ${item.item.name} <span style="color:#00e5ff">${item.item.symbol}</span></div>`
+  ).join('');
+  document.getElementById('trending').innerHTML = chips;
+}
+
+loadAll();
+setInterval(loadAll, 60000);
+</script>
+</body>
+</html>
